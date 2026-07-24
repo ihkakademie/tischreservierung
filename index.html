@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tischreservierung</title>
+  <style>
+    * { box-sizing: border-box; }
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --danger: #dc2626;
+      --success: #15803d;
+      --text: #111827;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Arial, sans-serif;
+      color: var(--text);
+      background:
+        linear-gradient(rgba(255,255,255,.94), rgba(255,255,255,.94)),
+        repeating-linear-gradient(0deg, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent 35px),
+        repeating-linear-gradient(90deg, #e5e7eb 0, #e5e7eb 1px, transparent 1px, transparent 35px);
+    }
+    button, input, select { font: inherit; }
+    button:disabled { cursor: not-allowed; opacity: .65; }
+    .page-header { padding: 28px 20px 10px; text-align: center; }
+    .page-header h1 { margin: 0; font-size: 32px; }
+    .page-header > p { margin: 10px 0 0; color: var(--muted); }
+    .date-selector { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px; margin-top: 22px; }
+    .date-selector input, .date-selector select {
+      min-height: 44px; padding: 11px 14px; color: var(--text); background: white;
+      border: 1px solid #d1d5db; border-radius: 10px; font-weight: bold; outline: none; cursor: pointer;
+    }
+    .date-selector input { min-width: 190px; }
+    .date-selector select { min-width: 175px; }
+    .date-selector input:focus, .date-selector select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    .date-selector button {
+      width: 44px; height: 44px; padding: 0; color: #1f2937; background: white;
+      border: 1px solid #d1d5db; border-radius: 10px; font-size: 26px; cursor: pointer; transition: .2s ease;
+    }
+    .date-selector button:hover:not(:disabled) { color: white; background: var(--primary); border-color: var(--primary); }
+    .availability-summary {
+      display: inline-block; margin-top: 15px !important; padding: 8px 14px;
+      color: var(--primary-dark) !important; background: #dbeafe; border-radius: 999px; font-size: 14px; font-weight: bold;
+    }
+    .connection-status {
+      width: fit-content; margin: 12px auto 0; padding: 7px 12px; color: #374151;
+      background: #f3f4f6; border-radius: 999px; font-size: 13px; font-weight: bold;
+    }
+    .connection-status.connected { color: #166534; background: #dcfce7; }
+    .connection-status.error { color: #991b1b; background: #fee2e2; }
+    .office {
+      position: relative; display: flex; justify-content: space-between; gap: 100px;
+      width: min(1200px, calc(100% - 40px)); margin: 30px auto; padding: 45px 45px 95px;
+      background: rgba(255,255,255,.88); border: 1px solid var(--border); border-radius: 24px;
+      box-shadow: 0 20px 50px rgba(15,23,42,.08);
+    }
+    .office-section { display: grid; grid-template-columns: repeat(2, 190px); gap: 75px 55px; }
+    .workstation { position: relative; width: 190px; height: 175px; cursor: pointer; user-select: none; }
+    .desk {
+      position: absolute; left: 0; width: 190px; height: 90px; padding: 12px;
+      background: linear-gradient(145deg,#fff,#eef2f7); border: 3px solid #1f2937; border-radius: 10px;
+      box-shadow: 0 10px 20px rgba(15,23,42,.12), inset 0 1px 0 white; transition: .2s ease;
+    }
+    .workstation.top-chair .desk { top: 45px; }
+    .workstation.bottom-chair .desk { top: 0; }
+    .chair {
+      position: absolute; left: 50%; width: 42px; height: 32px; transform: translateX(-50%);
+      background: linear-gradient(145deg,#374151,#111827); border: 3px solid #111827;
+      border-radius: 8px 8px 12px 12px; box-shadow: 0 7px 12px rgba(0,0,0,.18);
+    }
+    .workstation.top-chair .chair { top: 0; }
+    .workstation.bottom-chair .chair { top: 100px; }
+    .monitors { display: flex; justify-content: center; gap: 10px; }
+    .monitor {
+      position: relative; width: 61px; height: 38px; background: linear-gradient(145deg,#172033,#05080f);
+      border: 3px solid #111827; border-radius: 5px; box-shadow: 0 5px 9px rgba(0,0,0,.2);
+    }
+    .monitor::before { content: ""; position: absolute; inset: 4px; background: linear-gradient(135deg,#1d4ed8,#22d3ee); border-radius: 2px; opacity: .85; }
+    .monitor::after {
+      content: ""; position: absolute; left: 50%; bottom: -10px; width: 20px; height: 10px; transform: translateX(-50%);
+      border-left: 4px solid #111827; border-right: 4px solid #111827; border-bottom: 3px solid #111827;
+    }
+    .desk-info { position: absolute; left: 12px; right: 12px; bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; font-weight: bold; }
+    .desk-status { padding: 4px 7px; color: #166534; background: #dcfce7; border-radius: 999px; }
+    .reservation-name { position: absolute; left: 0; width: 100%; min-height: 24px; margin: 0; text-align: center; font-size: 13px; font-weight: bold; color: #374151; }
+    .workstation.top-chair .reservation-name { top: 145px; }
+    .workstation.bottom-chair .reservation-name { top: 143px; }
+    .workstation:hover .desk { transform: translateY(-3px); border-color: var(--primary); box-shadow: 0 14px 24px rgba(37,99,235,.18), inset 0 1px 0 white; }
+    .workstation.booked .desk { background: linear-gradient(145deg,#fee2e2,#fecaca); border-color: var(--danger); }
+    .workstation.booked .desk-status { color: white; background: var(--danger); }
+    .workstation.booked .reservation-name { color: #b91c1c; }
+    .selection-message { min-height: 30px; margin: 0 20px 30px; text-align: center; font-weight: bold; color: var(--primary); }
+    .entrance {
+      position: absolute; right: 48px; bottom: -31px; width: 190px; height: 64px; display: flex;
+      align-items: center; justify-content: center; color: #111827; background: white; border: 4px solid #111827;
+      border-bottom-width: 5px; border-radius: 50% 50% 18px 18px / 35% 35% 18px 18px;
+      box-shadow: 0 10px 22px rgba(15,23,42,.14); font-size: 13px; font-weight: 800;
+      letter-spacing: .02em; text-transform: uppercase; pointer-events: none;
+    }
+    .entrance::before { content: ""; position: absolute; top: -18px; left: 50%; width: 3px; height: 18px; transform: translateX(-50%); background: #111827; }
+    .entrance::after { content: "Eingang"; }
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 1000; display: none; align-items: center; justify-content: center;
+      padding: 20px; background: rgba(15,23,42,.65); backdrop-filter: blur(4px);
+    }
+    .modal-overlay.open { display: flex; }
+    .modal { width: min(460px,100%); padding: 26px; background: white; border-radius: 18px; box-shadow: 0 24px 60px rgba(0,0,0,.25); animation: modalIn .2s ease; }
+    @keyframes modalIn { from { opacity: 0; transform: scale(.96) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 10px; }
+    .modal-header h2 { margin: 0; font-size: 23px; }
+    .modal-date { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+    .close-button { width: 38px; height: 38px; padding: 0; color: #374151; background: #f3f4f6; border: none; border-radius: 50%; font-size: 24px; cursor: pointer; }
+    .close-button:hover { background: #e5e7eb; }
+    .form-group { display: flex; flex-direction: column; gap: 7px; margin-bottom: 16px; }
+    .form-group label { font-size: 14px; font-weight: bold; }
+    .form-group input, .form-group select { width: 100%; padding: 12px 13px; border: 1px solid #d1d5db; border-radius: 9px; outline: none; background: white; }
+    .form-group input:focus, .form-group select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    .form-message { display: none; margin: 0 0 16px; padding: 10px; color: #991b1b; background: #fee2e2; border-radius: 8px; font-size: 14px; }
+    .form-message.visible { display: block; }
+    .warning-box { margin: 15px 0; padding: 13px; color: #92400e; background: #fef3c7; border: 1px solid #f59e0b; border-radius: 10px; line-height: 1.45; }
+    .code-box { margin: 15px 0; padding: 16px; text-align: center; color: #1e3a8a; background: #dbeafe; border: 2px dashed #2563eb; border-radius: 12px; font-size: 24px; font-weight: 800; letter-spacing: .08em; overflow-wrap: anywhere; }
+    .copy-status { min-height: 20px; margin: 8px 0 0; color: var(--success); text-align: center; font-weight: bold; }
+    .modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .button { padding: 11px 17px; border: none; border-radius: 9px; font-weight: bold; cursor: pointer; }
+    .button-secondary { color: #374151; background: #e5e7eb; }
+    .button-secondary:hover { background: #d1d5db; }
+    .button-primary { color: white; background: var(--primary); }
+    .button-primary:hover:not(:disabled) { background: var(--primary-dark); }
+    .button-danger { color: white; background: var(--danger); }
+    .button-danger:hover:not(:disabled) { background: #b91c1c; }
+    @media (max-width:1050px) { .office { flex-direction: column; align-items: center; gap: 70px; } }
+    @media (max-width:600px) {
+      .office { width: calc(100% - 20px); padding: 30px 15px 95px; }
+      .entrance { right: 20px; width: 155px; }
+      .office-section { grid-template-columns: 1fr; gap: 50px; }
+      .page-header h1 { font-size: 26px; }
+      .date-selector input, .date-selector select { min-width: 160px; }
+      .modal-actions .button { flex: 1 1 auto; }
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <h1>Tisch reservieren</h1>
+    <p>Wählen Sie ein Datum, einen Zeitraum und anschließend einen freien Tisch.</p>
+    <div class="date-selector">
+      <button id="previousDayButton" type="button" aria-label="Vorheriger Tag">‹</button>
+      <input id="selectedDate" type="date" aria-label="Reservierungsdatum auswählen">
+      <select id="timeSlot" aria-label="Zeitraum auswählen">
+        <option value="vormittag">Vormittag</option>
+        <option value="nachmittag">Nachmittag</option>
+        <option value="ganztag">Ganzer Tag</option>
+      </select>
+      <button id="nextDayButton" type="button" aria-label="Nächster Tag">›</button>
+    </div>
+    <p id="availabilitySummary" class="availability-summary">Reservierungen werden geladen...</p>
+    <p id="connectionStatus" class="connection-status">Verbindung wird geprüft...</p>
+  </header>
+
+  <main class="office">
+    <section class="office-section">
+      <div class="workstation top-chair" data-table="1"><div class="chair"></div><div class="desk"><div class="monitors"><div class="monitor"></div><div class="monitor"></div></div><div class="desk-info"><span>Tisch 1</span><span class="desk-status">Frei</span></div></div><p class="reservation-name"></p></div>
+      <div class="workstation top-chair" data-table="2"><div class="chair"></div><div class="desk"><div class="monitors"><div class="monitor"></div><div class="monitor"></div></div><div class="desk-info"><span>Tisch 2</span><span class="desk-status">Frei</span></div></div><p class="reservation-name"></p></div>
+      <div class="workstation bottom-chair" data-table="3"><div class="desk"><div class="monitors"><div class="monitor"></div><div class="monitor"></div></div><div class="desk-info"><span>Tisch 3</span><span class="desk-status">Frei</span></div></div><div class="chair"></div><p class="reservation-name"></p></div>
+      <div class="workstation bottom-chair" data-table="4"><div class="desk"><div class="monitors"><div class="monitor"></div><div class="monitor"></div></div><div class="desk-info"><span>Tisch 4</span><span class="desk-status">Frei</span></div></div><div class="chair"></div><p class="reservation-name"></p></div>
+    </section>
+    <section class="office-section">
+      <div class="workstation top-chair" data-table="5"><div class="chair"></div><div class="desk"><div class="monitors"><div class="monitor"></div><div class="monitor"></div></div><div class="desk-info"><span>Tisch 5</span><span class="desk-status">Frei</span></div></div><p class="reservation-name"></p></div>
+      <div class="workstation top-chair" data-table="6"><div class="chair"></div><div class="desk"><div class="monitors"><div class="monitor"></div><div class="monitor"></div></div><div class="desk-info"><span>Tisch 6</span><span class="desk-status">Frei</span></div></div><p class="reservation-name"></p></div>
+      <div class="workstation bottom-chair" data-table="7"><div class="desk"><div class="monitors"><div class="monitor"></div><div class="monitor"></div></div><div class="desk-info"><span>Tisch 7</span><span class="desk-status">Frei</span></div></div><div class="chair"></div><p class="reservation-name"></p></div>
+      <div class="workstation bottom-chair" data-table="8"><div class="desk"><div class="monitors"><div class="monitor"></div><div class="monitor"></div></div><div class="desk-info"><span>Tisch 8</span><span class="desk-status">Frei</span></div></div><div class="chair"></div><p class="reservation-name"></p></div>
+    </section>
+    <div class="entrance" aria-label="Eingang" title="Eingang"></div>
+  </main>
+
+  <p id="selectionMessage" class="selection-message">Noch kein Tisch ausgewählt.</p>
+
+  <div id="bookingModal" class="modal-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header"><h2 id="modalTitle">Tisch reservieren</h2><button id="closeModalButton" class="close-button" type="button" aria-label="Fenster schließen">×</button></div>
+      <p id="modalDate" class="modal-date"></p>
+      <form id="bookingForm">
+        <div class="form-group"><label for="customerName">Name</label><input id="customerName" type="text" placeholder="Vor- und Nachname" autocomplete="name" maxlength="80" required></div>
+        <p id="formMessage" class="form-message"></p>
+        <div class="modal-actions"><button id="cancelButton" class="button button-secondary" type="button">Abbrechen</button><button id="submitButton" class="button button-primary" type="submit">Reservieren</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div id="successModal" class="modal-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="successTitle">
+      <div class="modal-header"><h2 id="successTitle">✅ Reservierung erfolgreich</h2><button id="closeSuccessButton" class="close-button" type="button" aria-label="Fenster schließen">×</button></div>
+      <p>Ihr Tisch wurde erfolgreich reserviert.</p>
+      <div id="generatedCode" class="code-box"></div>
+      <div class="warning-box"><strong>⚠️ Wichtig:</strong><br>Bitte speichern oder fotografieren Sie diesen Code. Ohne diesen Code kann die Reservierung später nicht gelöscht werden. Der Code wird nach dem Schließen nicht erneut angezeigt.</div>
+      <p id="copyStatus" class="copy-status"></p>
+      <div class="modal-actions"><button id="copyCodeButton" class="button button-primary" type="button">Code kopieren</button><button id="finishSuccessButton" class="button button-secondary" type="button">Schließen</button></div>
+    </div>
+  </div>
+
+  <div id="deleteModal" class="modal-overlay">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+      <div class="modal-header"><h2 id="deleteTitle">Reservierung löschen</h2><button id="closeDeleteButton" class="close-button" type="button" aria-label="Fenster schließen">×</button></div>
+      <p id="deleteInfo" class="modal-date"></p>
+      <form id="deleteForm">
+        <div id="bookingChoiceGroup" class="form-group" hidden><label for="bookingChoice">Reservierung auswählen</label><select id="bookingChoice"></select></div>
+        <div class="form-group"><label for="cancelCodeInput">Stornierungscode</label><input id="cancelCodeInput" type="text" placeholder="z. B. T6X9-MP42-KQ8A" autocomplete="off" maxlength="20" required></div>
+        <p id="deleteMessage" class="form-message"></p>
+        <div class="modal-actions"><button id="abortDeleteButton" class="button button-secondary" type="button">Abbrechen</button><button id="deleteButton" class="button button-danger" type="submit">Reservierung löschen</button></div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = "https://ipnnuuqmudfizktyydzy.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_fNTq1Dtyj9A7LilGukee_g_2otq2QUk";
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const workstations = document.querySelectorAll(".workstation");
+    const selectionMessage = document.getElementById("selectionMessage");
+    const connectionStatus = document.getElementById("connectionStatus");
+    const selectedDateInput = document.getElementById("selectedDate");
+    const timeSlotSelect = document.getElementById("timeSlot");
+    const previousDayButton = document.getElementById("previousDayButton");
+    const nextDayButton = document.getElementById("nextDayButton");
+    const availabilitySummary = document.getElementById("availabilitySummary");
+
+    const bookingModal = document.getElementById("bookingModal");
+    const modalTitle = document.getElementById("modalTitle");
+    const modalDate = document.getElementById("modalDate");
+    const bookingForm = document.getElementById("bookingForm");
+    const customerNameInput = document.getElementById("customerName");
+    const formMessage = document.getElementById("formMessage");
+    const closeModalButton = document.getElementById("closeModalButton");
+    const cancelButton = document.getElementById("cancelButton");
+    const submitButton = document.getElementById("submitButton");
+
+    const successModal = document.getElementById("successModal");
+    const generatedCode = document.getElementById("generatedCode");
+    const copyStatus = document.getElementById("copyStatus");
+    const copyCodeButton = document.getElementById("copyCodeButton");
+    const closeSuccessButton = document.getElementById("closeSuccessButton");
+    const finishSuccessButton = document.getElementById("finishSuccessButton");
+
+    const deleteModal = document.getElementById("deleteModal");
+    const deleteInfo = document.getElementById("deleteInfo");
+    const deleteForm = document.getElementById("deleteForm");
+    const bookingChoiceGroup = document.getElementById("bookingChoiceGroup");
+    const bookingChoice = document.getElementById("bookingChoice");
+    const cancelCodeInput = document.getElementById("cancelCodeInput");
+    const deleteMessage = document.getElementById("deleteMessage");
+    const deleteButton = document.getElementById("deleteButton");
+    const closeDeleteButton = document.getElementById("closeDeleteButton");
+    const abortDeleteButton = document.getElementById("abortDeleteButton");
+
+    let selectedTable = null;
+    let currentBookings = [];
+    let allDateBookings = [];
+    let deleteCandidates = [];
+    let lastGeneratedCode = "";
+
+    function getLocalDateValue(date = new Date()) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
+    const today = getLocalDateValue();
+    selectedDateInput.value = today;
+    selectedDateInput.min = today;
+    timeSlotSelect.value = "vormittag";
+
+    function formatDate(dateValue) {
+      if (!dateValue) return "";
+      return new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${dateValue}T12:00:00`));
+    }
+    function formatTimeSlot(timeSlot) {
+      if (timeSlot === "nachmittag") return "Nachmittag";
+      if (timeSlot === "ganztag") return "Ganzer Tag";
+      return "Vormittag";
+    }
+    function bookingBlocksTimeSlot(bookingTimeSlot, selectedTimeSlot) {
+      if (bookingTimeSlot === "ganztag") return true;
+      if (selectedTimeSlot === "ganztag") return true;
+      return bookingTimeSlot === selectedTimeSlot;
+    }
+    function getRelevantBookingsForSlot(bookings, selectedTimeSlot) {
+      return bookings.filter((booking) => bookingBlocksTimeSlot(booking.time_slot, selectedTimeSlot));
+    }
+    function getBookingsForTable(tableNumber) {
+      return currentBookings.filter((booking) => Number(booking.table_number) === tableNumber);
+    }
+    function getBookingDisplayText(bookings) {
+      if (bookings.length === 0) return "";
+      if (bookings.length === 1) return bookings[0].customer_name;
+      return "Mehrere Reservierungen";
+    }
+    function setConnectionStatus(message, type = "") {
+      connectionStatus.textContent = message;
+      connectionStatus.classList.remove("connected", "error");
+      if (type) connectionStatus.classList.add(type);
+    }
+    function showPageMessage(message, isError = false) {
+      selectionMessage.textContent = message;
+      selectionMessage.style.color = isError ? "#dc2626" : "#2563eb";
+    }
+    function setInlineMessage(element, message = "") {
+      element.textContent = message;
+      element.classList.toggle("visible", Boolean(message));
+    }
+    function generateCancelCode() {
+      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+      const bytes = new Uint32Array(12);
+      crypto.getRandomValues(bytes);
+      const raw = Array.from(bytes, (value) => chars[value % chars.length]).join("");
+      return `${raw.slice(0,4)}-${raw.slice(4,8)}-${raw.slice(8,12)}`;
+    }
+
+    function openBookingModal(tableNumber) {
+      selectedTable = Number(tableNumber);
+      modalTitle.textContent = `Tisch ${selectedTable} reservieren`;
+      modalDate.textContent = `${formatDate(selectedDateInput.value)} · ${formatTimeSlot(timeSlotSelect.value)}`;
+      customerNameInput.value = "";
+      setInlineMessage(formMessage);
+      bookingModal.classList.add("open");
+      setTimeout(() => customerNameInput.focus(), 100);
+    }
+    function closeBookingModal() {
+      bookingModal.classList.remove("open");
+      bookingForm.reset();
+      setInlineMessage(formMessage);
+      selectedTable = null;
+    }
+    function openSuccessModal(code) {
+      lastGeneratedCode = code;
+      generatedCode.textContent = code;
+      copyStatus.textContent = "";
+      successModal.classList.add("open");
+    }
+    function closeSuccessModal() {
+      successModal.classList.remove("open");
+      lastGeneratedCode = "";
+      generatedCode.textContent = "";
+      copyStatus.textContent = "";
+    }
+    function openDeleteModal(tableNumber, bookings) {
+      deleteCandidates = bookings;
+      deleteInfo.textContent = `Tisch ${tableNumber} · ${formatDate(selectedDateInput.value)}`;
+      bookingChoice.innerHTML = "";
+      bookings.forEach((booking) => {
+        const option = document.createElement("option");
+        option.value = String(booking.id);
+        option.textContent = `${formatTimeSlot(booking.time_slot)} – ${booking.customer_name}`;
+        bookingChoice.appendChild(option);
+      });
+      bookingChoiceGroup.hidden = bookings.length <= 1;
+      cancelCodeInput.value = "";
+      setInlineMessage(deleteMessage);
+      deleteModal.classList.add("open");
+      setTimeout(() => cancelCodeInput.focus(), 100);
+    }
+    function closeDeleteModal() {
+      deleteModal.classList.remove("open");
+      deleteCandidates = [];
+      deleteForm.reset();
+      setInlineMessage(deleteMessage);
+    }
+
+    function renderBookings() {
+      workstations.forEach((workstation) => {
+        const tableNumber = Number(workstation.dataset.table);
+        const statusElement = workstation.querySelector(".desk-status");
+        const reservationNameElement = workstation.querySelector(".reservation-name");
+        const tableBookings = getBookingsForTable(tableNumber);
+        workstation.classList.remove("booked");
+        statusElement.textContent = "Frei";
+        reservationNameElement.textContent = "";
+        if (tableBookings.length > 0) {
+          workstation.classList.add("booked");
+          statusElement.textContent = "Belegt";
+          reservationNameElement.textContent = getBookingDisplayText(tableBookings);
+        }
+      });
+      const occupiedTables = new Set(currentBookings.map((booking) => Number(booking.table_number))).size;
+      const freeTables = workstations.length - occupiedTables;
+      availabilitySummary.textContent = `${freeTables} von ${workstations.length} Tischen frei · ${formatDate(selectedDateInput.value)} · ${formatTimeSlot(timeSlotSelect.value)}`;
+      previousDayButton.disabled = selectedDateInput.value <= today;
+    }
+
+    async function loadBookings() {
+      setConnectionStatus("Verbindung zur Datenbank wird geprüft...");
+      availabilitySummary.textContent = "Reservierungen werden geladen...";
+      try {
+        const { data, error } = await supabaseClient.from("bookings")
+          .select("id, table_number, customer_name, booking_date, time_slot, created_at")
+          .eq("booking_date", selectedDateInput.value)
+          .order("table_number", { ascending: true });
+        if (error) throw error;
+        allDateBookings = data || [];
+        currentBookings = getRelevantBookingsForSlot(allDateBookings, timeSlotSelect.value);
+        setConnectionStatus("Mit Supabase verbunden", "connected");
+        renderBookings();
+      } catch (error) {
+        console.error(error);
+        currentBookings = [];
+        allDateBookings = [];
+        setConnectionStatus("Keine Verbindung zur Datenbank", "error");
+        showPageMessage(`Reservierungen konnten nicht geladen werden: ${error.message}`, true);
+        renderBookings();
+      }
+    }
+
+    async function createBooking(tableNumber, customerName, bookingDate, timeSlot, cancelCode) {
+      const { data, error } = await supabaseClient.from("bookings").insert({
+        table_number: tableNumber,
+        customer_name: customerName,
+        booking_date: bookingDate,
+        time_slot: timeSlot,
+        cancel_code: cancelCode
+      }).select("id, table_number, customer_name, booking_date, time_slot, created_at").single();
+      if (error) throw error;
+      return data;
+    }
+
+    async function cancelBooking(bookingId, cancelCode) {
+      const { data, error } = await supabaseClient.rpc("cancel_booking_by_code", {
+        p_booking_id: String(bookingId),
+        p_cancel_code: cancelCode.trim().toUpperCase()
+      });
+      if (error) throw error;
+      return data === true;
+    }
+
+    function changeSelectedDate(numberOfDays) {
+      const currentDate = new Date(`${selectedDateInput.value}T12:00:00`);
+      currentDate.setDate(currentDate.getDate() + numberOfDays);
+      const newDateValue = getLocalDateValue(currentDate);
+      if (newDateValue < today) return;
+      selectedDateInput.value = newDateValue;
+      showPageMessage(`Reservierungen für ${formatDate(newDateValue)} · ${formatTimeSlot(timeSlotSelect.value)}.`);
+      loadBookings();
+    }
+
+    workstations.forEach((workstation) => {
+      workstation.addEventListener("click", () => {
+        const tableNumber = Number(workstation.dataset.table);
+        const existingBookings = getBookingsForTable(tableNumber);
+        if (existingBookings.length > 0) {
+          openDeleteModal(tableNumber, existingBookings);
+          return;
+        }
+        openBookingModal(tableNumber);
+      });
+    });
+
+    bookingForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const customerName = customerNameInput.value.trim();
+      const bookingDate = selectedDateInput.value;
+      const selectedTimeSlot = timeSlotSelect.value;
+      if (customerName.length < 2) return setInlineMessage(formMessage, "Bitte geben Sie einen gültigen Namen ein.");
+      if (!selectedTable) return setInlineMessage(formMessage, "Bitte wählen Sie einen Tisch aus.");
+      submitButton.disabled = true;
+      submitButton.textContent = "Wird reserviert...";
+      setInlineMessage(formMessage);
+      try {
+        const conflictingBookings = allDateBookings.filter((booking) => Number(booking.table_number) === selectedTable && bookingBlocksTimeSlot(booking.time_slot, selectedTimeSlot));
+        if (conflictingBookings.length > 0) throw { code: "23505", message: "Booking conflict" };
+        const cancelCode = generateCancelCode();
+        const bookedTable = selectedTable;
+        await createBooking(selectedTable, customerName, bookingDate, selectedTimeSlot, cancelCode);
+        closeBookingModal();
+        showPageMessage(`Tisch ${bookedTable} wurde erfolgreich für ${customerName} reserviert.`);
+        await loadBookings();
+        openSuccessModal(cancelCode);
+      } catch (error) {
+        console.error(error);
+        if (error.code === "23505") {
+          setInlineMessage(formMessage, "Dieser Tisch ist für dieses Datum und diesen Zeitraum bereits reserviert.");
+          await loadBookings();
+        } else {
+          setInlineMessage(formMessage, `Die Reservierung konnte nicht gespeichert werden: ${error.message}`);
+        }
+      } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "Reservieren";
+      }
+    });
+
+    deleteForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const bookingId = bookingChoiceGroup.hidden ? deleteCandidates[0]?.id : bookingChoice.value;
+      const code = cancelCodeInput.value.trim();
+      if (!bookingId) return setInlineMessage(deleteMessage, "Keine Reservierung ausgewählt.");
+      if (code.length < 8) return setInlineMessage(deleteMessage, "Bitte geben Sie den vollständigen Stornierungscode ein.");
+      deleteButton.disabled = true;
+      deleteButton.textContent = "Wird gelöscht...";
+      setInlineMessage(deleteMessage);
+      try {
+        const deleted = await cancelBooking(bookingId, code);
+        if (!deleted) {
+          setInlineMessage(deleteMessage, "Ungültiger Stornierungscode. Die Reservierung wurde nicht gelöscht.");
+          return;
+        }
+        closeDeleteModal();
+        showPageMessage("Die Reservierung wurde erfolgreich gelöscht.");
+        await loadBookings();
+      } catch (error) {
+        console.error(error);
+        setInlineMessage(deleteMessage, `Die Reservierung konnte nicht gelöscht werden: ${error.message}`);
+      } finally {
+        deleteButton.disabled = false;
+        deleteButton.textContent = "Reservierung löschen";
+      }
+    });
+
+    copyCodeButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(lastGeneratedCode);
+        copyStatus.textContent = "✓ Code wurde kopiert.";
+      } catch {
+        copyStatus.textContent = "Bitte markieren und kopieren Sie den Code manuell.";
+      }
+    });
+
+    selectedDateInput.addEventListener("change", () => {
+      if (selectedDateInput.value < today) selectedDateInput.value = today;
+      showPageMessage(`Reservierungen für ${formatDate(selectedDateInput.value)} · ${formatTimeSlot(timeSlotSelect.value)}.`);
+      loadBookings();
+    });
+    timeSlotSelect.addEventListener("change", () => {
+      showPageMessage(`Reservierungen für ${formatDate(selectedDateInput.value)} · ${formatTimeSlot(timeSlotSelect.value)}.`);
+      loadBookings();
+    });
+    previousDayButton.addEventListener("click", () => changeSelectedDate(-1));
+    nextDayButton.addEventListener("click", () => changeSelectedDate(1));
+    closeModalButton.addEventListener("click", closeBookingModal);
+    cancelButton.addEventListener("click", closeBookingModal);
+    closeSuccessButton.addEventListener("click", closeSuccessModal);
+    finishSuccessButton.addEventListener("click", closeSuccessModal);
+    closeDeleteButton.addEventListener("click", closeDeleteModal);
+    abortDeleteButton.addEventListener("click", closeDeleteModal);
+
+    [bookingModal, successModal, deleteModal].forEach((modal) => {
+      modal.addEventListener("click", (event) => {
+        if (event.target !== modal) return;
+        if (modal === bookingModal) closeBookingModal();
+        if (modal === successModal) closeSuccessModal();
+        if (modal === deleteModal) closeDeleteModal();
+      });
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      if (bookingModal.classList.contains("open")) closeBookingModal();
+      else if (deleteModal.classList.contains("open")) closeDeleteModal();
+      else if (successModal.classList.contains("open")) closeSuccessModal();
+    });
+
+    loadBookings();
+    setInterval(() => {
+      if (![bookingModal, successModal, deleteModal].some((modal) => modal.classList.contains("open"))) loadBookings();
+    }, 30000);
+  </script>
+</body>
+</html>
